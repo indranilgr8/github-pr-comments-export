@@ -1,114 +1,154 @@
 # GitHub PR Comments Export
 
-This standalone utility exports all comments and review activity from one or many GitHub pull requests into a single CSV file.
+> A lightweight Python CLI utility to extract all pull request comments, inline review feedback, and review events from one or many GitHub PRs — exported as a single, analysis-ready CSV file.
+
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python&logoColor=white)
+![GitHub API](https://img.shields.io/badge/GitHub%20API-REST%20v3-181717?logo=github)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Read Only](https://img.shields.io/badge/API%20Access-Read--Only-brightgreen)
+
+---
+
+## Why This Tool Exists
+
+When managing large engineering teams, analyzing PR review patterns across dozens of pull requests manually is slow and error-prone. This utility was built to automate the extraction of review comments at scale — enabling data-driven insights into code review quality, reviewer engagement, and feedback trends across entire sprints or release cycles.
+
+---
 
 ## What It Exports
 
-- Issue conversation comments (`/issues/{pr}/comments`)
-- Inline review comments (`/pulls/{pr}/comments`)
-- Review events (`/pulls/{pr}/reviews`)
+For each PR, the tool captures three comment sources via the GitHub REST API:
+
+| Source | API Endpoint |
+|---|---|
+| Conversation comments | `/issues/{pr}/comments` |
+| Inline review comments | `/pulls/{pr}/comments` |
+| Review events (approved, changes requested, etc.) | `/pulls/{pr}/reviews` |
+
+All output is merged into a single CSV with PR identifiers, making it safe to combine data across multiple repositories or time periods.
+
+---
+
+## Output CSV Columns
+
+```
+pr_owner | pr_repo | pr_number | pr_url | comment_id | comment_type |
+author | body | created_at | updated_at | path | line | state
+```
+
+---
 
 ## Requirements
 
 - Python 3.9+
-- A GitHub token with access to the target repository (required for private repos)
+- A GitHub Personal Access Token (PAT) with the following **read-only** permissions:
+  - Fine-grained PAT: `Pull Requests (Read)`, `Issues (Read)`, `Metadata (Read)`
+  - Classic PAT: `repo` (read) — use minimal scopes only
 
-Recommended token permissions (read-only):
+No third-party libraries required — uses Python standard library + `requests`.
 
-- Fine-grained PAT: `Pull requests (Read)`, `Issues (Read)`, `Metadata (Read)`
-- Classic PAT: use minimal scopes and avoid any write/admin scopes
+---
 
-## Safety: Read-Only API Access
+## Installation
 
-This script is designed to be read-only against PRs.
+```bash
+git clone https://github.com/indranilgr8/github-pr-comments-export.git
+cd github-pr-comments-export
+pip install requests
+```
 
-- It only calls GitHub GET endpoints for:
-	- `/issues/{pr}/comments`
-	- `/pulls/{pr}/comments`
-	- `/pulls/{pr}/reviews`
-- It does not send POST, PATCH, PUT, or DELETE requests.
-- It validates that every API URL (including pagination links/redirects) stays on `https://api.github.com` and on the allowed read endpoints.
+---
 
-## Usage (PowerShell)
+## Usage
 
-Single PR:
+### Single PR (PowerShell)
 
 ```powershell
 $env:GITHUB_TOKEN = "YOUR_GITHUB_TOKEN"
-python .\export_github_pr_comments_csv.py --pr-url "https://github.com/OWNER/REPO/pull/123" --output-csv "PR_123_comments.csv"
+python .\export_github_pr_comments_csv.py `
+  --pr-url "https://github.com/OWNER/REPO/pull/123" `
+  --output-csv "PR_123_comments.csv"
 ```
 
-Multiple PRs from input file:
+### Single PR (Bash / macOS / Linux)
 
-```powershell
-@'
-https://github.com/OWNER/REPO/pull/123
-https://github.com/OWNER/REPO/pull/124
-# comments and blank lines are ignored
-'@ | Set-Content -Path .\pr_list.txt
-
-python .\export_github_pr_comments_csv.py --pr-list-file ".\pr_list.txt" --output-csv "PR_batch_comments.csv"
+```bash
+export GITHUB_TOKEN="YOUR_GITHUB_TOKEN"
+python export_github_pr_comments_csv.py \
+  --pr-url "https://github.com/OWNER/REPO/pull/123" \
+  --output-csv "PR_123_comments.csv"
 ```
 
-Or pass token explicitly:
+### Batch Export from File
 
-```powershell
-python .\export_github_pr_comments_csv.py --pr-url "https://github.com/OWNER/REPO/pull/123" --token "YOUR_GITHUB_TOKEN" --output-csv "PR_123_comments.csv"
+Create a `pr_list.txt` file with one PR URL per line:
+
+```
+https://github.com/OWNER/REPO/pull/101
+https://github.com/OWNER/REPO/pull/102
+https://github.com/OWNER/REPO/pull/103
+# Lines starting with # are ignored
 ```
 
-Or place your token in a file named `.github_token` in the same folder as the script (first non-empty line is used):
+Then run:
 
-```powershell
-Set-Content -Path .\.github_token -Value "YOUR_GITHUB_TOKEN"
-python .\export_github_pr_comments_csv.py --pr-url "https://github.com/OWNER/REPO/pull/123" --output-csv "PR_123_comments.csv"
+```bash
+python export_github_pr_comments_csv.py \
+  --pr-list-file "./pr_list.txt" \
+  --output-csv "sprint_review_comments.csv"
 ```
 
-You can also point to a different token file path:
+### Token Resolution Order
 
-```powershell
-python .\export_github_pr_comments_csv.py --pr-url "https://github.com/OWNER/REPO/pull/123" --token-file "C:\path\to\token.txt" --output-csv "PR_123_comments.csv"
-```
+The script resolves your GitHub token in this priority order:
 
-Token resolution order:
-
-1. `--token`
+1. `--token` flag (explicit)
 2. `GITHUB_TOKEN` environment variable
-3. `--token-file` (default `.github_token`)
+3. `--token-file` flag (path to a file containing your token)
+4. Default `.github_token` file in the same directory
 
-## PR Input File Format
+---
 
-- One PR URL per line
-- Blank lines are ignored
-- Lines starting with `#` are treated as comments and ignored
+## CLI Reference
 
-Example `pr_list.txt`:
+| Flag | Description |
+|---|---|
+| `--pr-url` | Single PR URL to export |
+| `--pr-list-file` | Path to a text file containing multiple PR URLs |
+| `--output-csv` | Output file path (`.csv` extension auto-appended if missing) |
+| `--token` | GitHub PAT (overrides environment variable) |
+| `--token-file` | Path to a file containing your token |
 
-```text
-https://github.com/OWNER/REPO/pull/123
-https://github.com/OWNER/REPO/pull/456
-```
+---
 
-## Output CSV Columns
+## Security & Safety
 
-The CSV includes PR identifiers so multiple PRs can be merged safely:
+This tool is **strictly read-only**:
 
-- `pr_owner`
-- `pr_repo`
-- `pr_number`
-- `pr_url`
-- (all existing comment/review fields)
+- Only calls `GET` endpoints — no `POST`, `PATCH`, `PUT`, or `DELETE`
+- Validates all API URLs to ensure they stay on `https://api.github.com`
+- Validates all pagination links before following them
+- Never writes back to GitHub in any form
 
-## Example For Your PR
+**Token hygiene tip:** Store your token in a `.github_token` file and add it to `.gitignore` — never commit tokens to source control.
 
-```powershell
-$env:GITHUB_TOKEN = "YOUR_GITHUB_TOKEN"
-python .\export_github_pr_comments_csv.py --pr-url "https://github.com/pearson-vle-pvs/pvs-web-connexus/pull/8886" --output-csv "PR_8886_comments.csv"
-```
+---
 
-The CSV is written to the file passed via `--output-csv`.
+## Use Cases
 
-Output behavior details:
+- **Sprint retrospectives** — analyze review comment volume and patterns across a sprint
+- **Engineering metrics** — measure reviewer engagement, feedback density, and response time
+- **Code review audits** — export historical review data for compliance or quality reports
+- **Team insights** — identify top reviewers and common feedback themes across a codebase
 
-- If `--output-csv` has no `.csv` extension, the script appends `.csv` automatically.
-- If the output folder does not exist, it is created automatically.
-- The script prints the absolute path of the saved CSV so it is easy to locate/download.
+---
+
+## Contributing
+
+Issues and PRs are welcome. If you extend this tool to support additional output formats (JSON, Excel, Markdown tables), feel free to open a pull request.
+
+---
+
+## License
+
+MIT License — free to use, modify, and distribute.
